@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>School Metrics Explorer & Forecast</title>
+  <style>
+    :root{
+      --aps-blue:#003b71; --aps-gold:#f6b221; --ink:#172033; --muted:#64748b;
+      --panel:#ffffff; --bg:#f5f7fb; --line:#dbe3ef; --soft:#eef4ff;
+      --good:#166534; --warn:#92400e; --bad:#991b1b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink)}
+    header{background:linear-gradient(135deg,var(--aps-blue),#0f5d9d);color:white;padding:26px 28px 22px;border-bottom:5px solid var(--aps-gold)}
+    header h1{margin:0;font-size:clamp(24px,3vw,38px);letter-spacing:-.03em}
+    header p{margin:8px 0 0;max-width:980px;color:#e6effb;font-size:15px;line-height:1.45}
+    main{padding:20px;max-width:1500px;margin:0 auto}
+    .grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:18px}
+    @media(max-width:960px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(15,23,42,.07)}
+    .controls{padding:18px;position:sticky;top:12px;align-self:start}
+    .section{margin-bottom:18px}
+    label{display:block;font-weight:700;font-size:13px;margin:0 0 7px;color:#243044}
+    select,input{width:100%;border:1px solid #cfd8e6;border-radius:12px;padding:10px 12px;background:white;color:var(--ink);font-size:14px}
+    select[multiple]{height:190px}
+    .hint{font-size:12px;color:var(--muted);line-height:1.35;margin-top:6px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    button{border:0;border-radius:12px;padding:10px 12px;font-weight:800;cursor:pointer;background:var(--aps-blue);color:white}
+    button.secondary{background:#e8eef7;color:#19324f}
+    button.ghost{background:white;color:var(--aps-blue);border:1px solid #cfd8e6}
+    .content{display:grid;gap:18px}
+    .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    @media(max-width:980px){.summary{grid-template-columns:repeat(2,1fr)}}
+    .stat{padding:14px 16px}
+    .stat .k{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+    .stat .v{font-size:24px;font-weight:900;margin-top:3px}
+    .chartCard{padding:16px}
+    .chartTop{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+    .chartTop h2{font-size:21px;letter-spacing:-.02em;margin:0}
+    .pills{display:flex;gap:6px;flex-wrap:wrap}
+    .pill{font-size:12px;font-weight:800;border-radius:999px;padding:6px 9px;background:var(--soft);color:#21456b;border:1px solid #d8e6fb}
+    svg{width:100%;height:560px;display:block}
+    .axis{stroke:#94a3b8;stroke-width:1}
+    .gridline{stroke:#e5eaf2;stroke-width:1}
+    .label{fill:#475569;font-size:11px}
+    .dataLabel{font-size:11px;font-weight:800;paint-order:stroke;stroke:white;stroke-width:3px;stroke-linejoin:round}
+    .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+    .legendItem{display:flex;align-items:center;gap:6px;font-size:12px;color:#334155;font-weight:700}
+    .swatch{width:18px;height:4px;border-radius:999px}
+    .tableWrap{padding:0;overflow:hidden}
+    .tableHeader{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+    .tableHeader h2{margin:0;font-size:18px}
+    .scroll{overflow:auto;max-height:520px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:10px 12px;border-bottom:1px solid #e8eef6;text-align:left;white-space:nowrap}
+    th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#334155;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    tr:hover td{background:#fbfdff}
+    .forecastRow td{background:#fff8e8}
+    .note{font-size:12px;color:var(--muted);line-height:1.45;padding:12px 16px;border-top:1px solid var(--line);background:#fbfcff}
+    .error{display:none;padding:14px 16px;border-radius:14px;background:#fff1f2;color:#9f1239;border:1px solid #fecdd3;font-weight:700}
+  </style>
+</head>
+<body>
+<header>
+  <h1>School Metrics Explorer & Forecast</h1>
+  <p>Select one or more schools and a metric to view historical trends, three-year forecasts, and 95% confidence intervals. Forecasts use a simple linear trend model fit separately for each selected school and metric.</p>
+</header>
+<main>
+  <div id="error" class="error"></div>
+  <div class="grid">
+    <aside class="card controls">
+      <div class="section">
+        <label for="metric">Metric</label>
+        <select id="metric"></select>
+        <div class="hint">Rates are shown as percentages. Enrollment is shown as a count.</div>
+      </div>
+      <div class="section">
+        <label for="schoolSearch">Search schools</label>
+        <input id="schoolSearch" placeholder="Type a school name..." />
+      </div>
+      <div class="section">
+        <label for="schools">Schools</label>
+        <select id="schools" multiple></select>
+        <div class="hint">Hold Ctrl or Shift to choose multiple schools. The graph is clearest with 1–5 schools.</div>
+      </div>
+      <div class="row section">
+        <button id="selectTop">Select first 3</button>
+        <button id="clear" class="secondary">Clear</button>
+      </div>
+      <div class="section">
+        <label for="level">School level filter</label>
+        <select id="level">
+          <option value="">All levels</option>
+          <option value="k_5_school">K–5</option>
+          <option value="6_8_school">6–8</option>
+          <option value="9_12_school">9–12</option>
+          <option value="k_8_school">K–8</option>
+        </select>
+      </div>
+      <button id="download" class="ghost" style="width:100%">Download visible table as CSV</button>
+    </aside>
+
+    <section class="content">
+      <div class="summary">
+        <div class="card stat"><div class="k">Schools loaded</div><div id="nSchools" class="v">—</div></div>
+        <div class="card stat"><div class="k">Historical records</div><div id="nRecords" class="v">—</div></div>
+        <div class="card stat"><div class="k">Selected series</div><div id="nSeries" class="v">—</div></div>
+        <div class="card stat"><div class="k">Forecast horizon</div><div class="v">3 yrs</div></div>
+      </div>
+
+      <div class="card chartCard">
+        <div class="chartTop">
+          <div>
+            <h2 id="chartTitle">Trend and forecast</h2>
+            <div class="hint" id="chartSubtitle">Historical values are solid; forecasts are dashed with confidence bands.</div>
+          </div>
+          <div class="pills">
+            <span class="pill">Data labels on</span>
+            <span class="pill">95% CI</span>
+            <span class="pill">Linear trend</span>
+          </div>
+        </div>
+        <svg id="chart" role="img" aria-label="Line chart"></svg>
+        <div id="legend" class="legend"></div>
+      </div>
+
+      <div class="card tableWrap">
+        <div class="tableHeader">
+          <h2>Historical and forecast data</h2>
+          <span class="hint">Forecast rows are highlighted.</span>
+        </div>
+        <div class="scroll">
+          <table id="dataTable"></table>
+        </div>
+        <div class="note">
+          Forecast method: ordinary least squares trend over available historical years for each school/metric. Confidence intervals are approximate prediction intervals using residual error and are clamped to 0–100% for percentage metrics.
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+const FILES = {
+  schools: "data/schools.json",
+  attendance: "data/attendance_rates.json",
+  graduation: "data/graduation_rates.json",
+  test: "data/test_scores.json",
+  demographics: "data/demographics.json"
+};
+
+const METRICS = [
+  {group:"Attendance", key:"attendance_rate", label:"Attendance Rate", source:"attendance", type:"rate"},
+  {group:"Attendance", key:"chronic_absenteeism_rate", label:"Chronic Absenteeism Rate", source:"attendance", type:"rate"},
+  {group:"Assessment", key:"english_language_arts_proficiency", label:"ELA Proficiency", source:"test", type:"rate"},
+  {group:"Assessment", key:"mathematics_proficiency", label:"Mathematics Proficiency", source:"test", type:"rate"},
+  {group:"Assessment", key:"science_proficiency", label:"Science Proficiency", source:"test", type:"rate"},
+  {group:"Assessment", key:"english_language_proficiency", label:"English Language Proficiency", source:"test", type:"rate"},
+  {group:"Graduation", key:"graduation_rate", label:"Graduation Rate", source:"graduation", type:"rate"},
+  {group:"Demographics", key:"enrollment", label:"Enrollment", source:"demographics", type:"count"},
+  {group:"Demographics", key:"pct_economically_disadvantaged", label:"Economically Disadvantaged", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_direct_cert", label:"Direct Certification", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_english_learner", label:"English Learner", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_special_education", label:"Special Education", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_gifted", label:"Gifted", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_native_american", label:"Native American", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_asian", label:"Asian", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_black_african_american", label:"Black/African American", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_hispanic", label:"Hispanic", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_pacific_islander", label:"Pacific Islander", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_two_or_more_races", label:"Two or More Races", source:"demographics", type:"rate"},
+  {group:"Demographics", key:"pct_white", label:"White", source:"demographics", type:"rate"}
+];
+
+const COLORS = ["#003b71","#d97706","#047857","#7c3aed","#be123c","#0891b2","#4b5563","#ca8a04"];
+let raw = {}, schools = [], schoolById = new Map(), currentRows = [];
+
+function startYear(s){ const m = String(s||"").match(/\d{4}/); return m ? +m[0] : NaN; }
+function nextSchoolYear(y){ return `${y}-${String(y+1).slice(2)}`; }
+function valueOk(v){ return typeof v === "number" && Number.isFinite(v); }
+function format(v,type){
+  if(!valueOk(v)) return "—";
+  if(type === "count") return Math.round(v).toLocaleString();
+  return (v*100).toFixed(v < .10 ? 1 : 0) + "%";
+}
+function clamp(v,type){
+  if(!valueOk(v)) return null;
+  if(type === "count") return Math.max(0, v);
+  return Math.max(0, Math.min(1, v));
+}
+
+async function loadData(){
+  try{
+    const entries = await Promise.all(Object.entries(FILES).map(async ([k,u]) => [k, await fetch(u).then(r => {
+      if(!r.ok) throw new Error(`${u} returned ${r.status}`);
+      return r.json();
+    })]));
+    raw = Object.fromEntries(entries);
+    schools = raw.schools.slice().sort((a,b)=>String(a.school_name).localeCompare(String(b.school_name)));
+    schoolById = new Map(schools.map(s=>[+s.locationid, s]));
+    setupControls();
+    update();
+  }catch(err){
+    const e = document.getElementById("error");
+    e.style.display = "block";
+    e.textContent = "Data failed to load: " + err.message + ". Run this site from a local web server, not by double-clicking the file.";
+  }
+}
+
+function setupControls(){
+  const metric = document.getElementById("metric");
+  let groups = {};
+  METRICS.forEach(m => (groups[m.group] ||= []).push(m));
+  metric.innerHTML = Object.entries(groups).map(([g,items]) =>
+    `<optgroup label="${g}">${items.map(m=>`<option value="${m.key}">${m.label}</option>`).join("")}</optgroup>`
+  ).join("");
+  metric.value = "attendance_rate";
+  document.getElementById("nSchools").textContent = schools.length.toLocaleString();
+  populateSchools();
+  ["metric","schools","level"].forEach(id => document.getElementById(id).addEventListener("change", update));
+  document.getElementById("schoolSearch").addEventListener("input", populateSchools);
+  document.getElementById("selectTop").addEventListener("click", () => {
+    const sel = document.getElementById("schools");
+    [...sel.options].forEach((o,i)=>o.selected = i < 3);
+    update();
+  });
+  document.getElementById("clear").addEventListener("click", () => {
+    [...document.getElementById("schools").options].forEach(o=>o.selected=false);
+    update();
+  });
+  document.getElementById("download").addEventListener("click", downloadCSV);
+}
+
+function populateSchools(){
+  const q = document.getElementById("schoolSearch").value.toLowerCase().trim();
+  const level = document.getElementById("level").value;
+  const prior = new Set([...document.getElementById("schools").selectedOptions].map(o=>o.value));
+  const list = schools.filter(s => (!q || String(s.school_name).toLowerCase().includes(q)) && (!level || s[level] === "Yes"));
+  document.getElementById("schools").innerHTML = list.map(s => `<option value="${s.locationid}" ${prior.has(String(s.locationid)) ? "selected":""}>${s.school_name}</option>`).join("");
+}
+
+function selectedMetric(){ return METRICS.find(m => m.key === document.getElementById("metric").value) || METRICS[0]; }
+function selectedSchoolIds(){
+  const vals = [...document.getElementById("schools").selectedOptions].map(o=>+o.value);
+  if(vals.length) return vals;
+  return schools.slice(0,3).map(s=>+s.locationid);
+}
+
+function historicalSeries(metric, id){
+  const sourceData = raw[metric.source] || [];
+  return sourceData
+    .filter(d => +d.locationid === +id && valueOk(d[metric.key]))
+    .map(d => {
+      const sy = d.school_year || d.year;
+      return {locationid:+id, school: schoolById.get(+id)?.school_name || `Location ${id}`, year:startYear(sy), school_year:sy, value:+d[metric.key], kind:"Historical"};
+    })
+    .filter(d => Number.isFinite(d.year))
+    .sort((a,b)=>a.year-b.year);
+}
+
+function forecast(series, metric){
+  const n = series.length;
+  if(n < 3) return [];
+  const xs = series.map(d=>d.year), ys = series.map(d=>d.value);
+  const xbar = xs.reduce((a,b)=>a+b,0)/n, ybar = ys.reduce((a,b)=>a+b,0)/n;
+  const sxx = xs.reduce((a,x)=>a+(x-xbar)**2,0);
+  if(sxx === 0) return [];
+  const b1 = xs.reduce((a,x,i)=>a+(x-xbar)*(ys[i]-ybar),0)/sxx;
+  const b0 = ybar - b1*xbar;
+  const residuals = xs.map((x,i)=>ys[i]-(b0+b1*x));
+  const sse = residuals.reduce((a,e)=>a+e*e,0);
+  const se = Math.sqrt(sse/Math.max(1,n-2));
+  const last = Math.max(...xs);
+  return [1,2,3].map(h => {
+    const x = last + h;
+    const pred = b0 + b1*x;
+    const predSE = se * Math.sqrt(1 + 1/n + ((x-xbar)**2)/sxx);
+    const margin = 1.96 * predSE;
+    return {
+      locationid: series[0].locationid, school: series[0].school, year:x, school_year:nextSchoolYear(x),
+      value:clamp(pred, metric.type), lower:clamp(pred-margin, metric.type), upper:clamp(pred+margin, metric.type),
+      kind:"Forecast"
+    };
+  });
+}
+
+function update(){
+  const metric = selectedMetric();
+  document.getElementById("chartTitle").textContent = metric.label + " Trend and Forecast";
+  const ids = selectedSchoolIds();
+  let all = [];
+  let seriesList = ids.map(id => {
+    const hist = historicalSeries(metric,id);
+    const fc = forecast(hist,metric);
+    all.push(...hist.map(d=>({...d, lower:null, upper:null})), ...fc);
+    return {id, hist, fc, all:hist.concat(fc)};
+  }).filter(s=>s.all.length);
+  currentRows = all.sort((a,b)=>a.school.localeCompare(b.school) || a.year-b.year);
+  document.getElementById("nRecords").textContent = (raw.attendance.length + raw.graduation.length + raw.test.length + raw.demographics.length).toLocaleString();
+  document.getElementById("nSeries").textContent = seriesList.length.toLocaleString();
+  drawChart(seriesList, metric);
+  drawTable(currentRows, metric);
+}
+
+function drawChart(seriesList, metric){
+  const svg = document.getElementById("chart");
+  const W = svg.clientWidth || 900, H = 560, m = {l:58,r:24,t:24,b:54};
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+  if(!seriesList.length){ svg.innerHTML = `<text x="30" y="60" class="label">No data available for this selection.</text>`; return; }
+  const points = seriesList.flatMap(s=>s.all);
+  const years = points.map(d=>d.year), vals = points.flatMap(d=>[d.value,d.lower,d.upper].filter(valueOk));
+  let minY = Math.min(...vals), maxY = Math.max(...vals);
+  if(metric.type === "rate"){ minY = Math.max(0, Math.min(minY, .0)); maxY = Math.min(1, Math.max(maxY, .05)); }
+  if(maxY === minY){ maxY += metric.type==="rate"?.05:10; minY -= metric.type==="rate"?.05:10; }
+  const minX = Math.min(...years), maxX = Math.max(...years);
+  const x = yr => m.l + (yr-minX)/(maxX-minX || 1)*(W-m.l-m.r);
+  const y = v => H-m.b - (v-minY)/(maxY-minY)*(H-m.t-m.b);
+  const line = (pts, dash, color, width=3) => {
+    if(pts.length < 2) return;
+    const path = pts.map((p,i)=>`${i?"L":"M"}${x(p.year)},${y(p.value)}`).join(" ");
+    svg.insertAdjacentHTML("beforeend", `<path d="${path}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" ${dash?'stroke-dasharray="7 7"':''}/>`); 
+  };
+  const yTicks = 5;
+  for(let i=0;i<=yTicks;i++){
+    const val = minY + (maxY-minY)*i/yTicks, yy = y(val);
+    svg.insertAdjacentHTML("beforeend", `<line class="gridline" x1="${m.l}" x2="${W-m.r}" y1="${yy}" y2="${yy}"/><text class="label" x="${m.l-8}" y="${yy+4}" text-anchor="end">${format(val,metric.type)}</text>`);
+  }
+  for(let yr=minX; yr<=maxX; yr++){
+    const xx = x(yr);
+    svg.insertAdjacentHTML("beforeend", `<line class="gridline" x1="${xx}" x2="${xx}" y1="${m.t}" y2="${H-m.b}" opacity=".45"/><text class="label" x="${xx}" y="${H-22}" text-anchor="middle">${String(yr).slice(2)}-${String(yr+1).slice(2)}</text>`);
+  }
+  svg.insertAdjacentHTML("beforeend", `<line class="axis" x1="${m.l}" x2="${W-m.r}" y1="${H-m.b}" y2="${H-m.b}"/><line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t}" y2="${H-m.b}"/>`);
+  seriesList.forEach((s,idx)=>{
+    const color = COLORS[idx % COLORS.length];
+    if(s.fc.length){
+      const bandPts = s.fc.filter(d=>valueOk(d.lower)&&valueOk(d.upper));
+      if(bandPts.length){
+        const upper = bandPts.map(d=>`${x(d.year)},${y(d.upper)}`).join(" ");
+        const lower = bandPts.slice().reverse().map(d=>`${x(d.year)},${y(d.lower)}`).join(" ");
+        svg.insertAdjacentHTML("beforeend", `<polygon points="${upper} ${lower}" fill="${color}" opacity=".13"/>`);
+      }
+    }
+    line(s.hist,false,color,3.25);
+    line(s.fc.length ? [s.hist.at(-1),...s.fc] : [],true,color,3.25);
+    s.all.forEach((p,i)=>{
+      const yy = y(p.value), xx = x(p.year);
+      svg.insertAdjacentHTML("beforeend", `<circle cx="${xx}" cy="${yy}" r="${p.kind==='Forecast'?4.5:4}" fill="white" stroke="${color}" stroke-width="2.5"/><text class="dataLabel" x="${xx}" y="${yy - 9 - (idx%2)*8}" text-anchor="middle" fill="${color}">${format(p.value,metric.type)}</text>`);
+    });
+  });
+  document.getElementById("legend").innerHTML = seriesList.map((s,idx)=>`<span class="legendItem"><span class="swatch" style="background:${COLORS[idx%COLORS.length]}"></span>${s.hist[0]?.school || schoolById.get(s.id)?.school_name || s.id}</span>`).join("");
+}
+
+function drawTable(rows, metric){
+  const table = document.getElementById("dataTable");
+  table.innerHTML = `<thead><tr><th>School</th><th>School Year</th><th>Type</th><th>${metric.label}</th><th>Lower 95% CI</th><th>Upper 95% CI</th></tr></thead><tbody>` +
+    rows.map(r => `<tr class="${r.kind==='Forecast'?'forecastRow':''}"><td>${r.school}</td><td>${r.school_year}</td><td>${r.kind}</td><td>${format(r.value,metric.type)}</td><td>${format(r.lower,metric.type)}</td><td>${format(r.upper,metric.type)}</td></tr>`).join("") +
+    `</tbody>`;
+}
+
+function downloadCSV(){
+  const metric = selectedMetric();
+  const esc = s => `"${String(s ?? "").replaceAll('"','""')}"`;
+  const lines = [["school","school_year","type",metric.key,"lower_95_ci","upper_95_ci"].join(",")];
+  currentRows.forEach(r => lines.push([r.school,r.school_year,r.kind,r.value,r.lower,r.upper].map(esc).join(",")));
+  const blob = new Blob([lines.join("\n")], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = `${metric.key}_forecast.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+loadData();
+</script>
+</body>
+</html>
