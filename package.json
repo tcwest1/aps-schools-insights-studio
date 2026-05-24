@@ -1,0 +1,15 @@
+{
+  "name": "school-insights-ai-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Internal school insights dashboard with Gemini-powered summaries.",
+  "scripts": {
+    "start": "netlify dev",
+    "dev": "netlify dev",
+    "deploy": "netlify deploy",
+    "deploy:prod": "netlify deploy --prod"
+  },
+  "devDependencies": {
+    "netlify-cli": "latest"
+  }
+}
